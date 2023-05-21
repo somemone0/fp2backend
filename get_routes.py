@@ -1,6 +1,10 @@
-from app import app, db
+
 from flask import request
-from models import Post
+from app import db
+from models import Post, User
+
+from flask import current_app as app
+
 
 @app.route("/posts", methods=["GET"])
 def posts():

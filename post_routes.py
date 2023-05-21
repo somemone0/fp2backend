@@ -1,9 +1,13 @@
-from app import app, db
-from Flask import request
+
+from flask import request
 from models import User, Post, Token
-from jwt import getUserFromToken, validateToken
+from jwt_util import getUserFromToken, validateToken
 import jwt
 import datetime
+
+from flask import current_app as app
+from app import db
+
 
 @app.route("/", methods=["GET"])
 def main():
@@ -11,8 +15,8 @@ def main():
 
 @app.route("/login", methods=["POST"])
 def login():
-    username = request.form.get("username")
-    password = request.form.get("password")
+    username = request.json["username"]
+    password = request.json["password"]
 
     result = {}
     user_object = User.query.filter_by(username=username).first()
@@ -28,8 +32,10 @@ def login():
     
     encoded_jwt = jwt.encode({"username": username, "password": password}, app.config["SECRET_KEY"], algorithm="HS256")
 
-    exp_date = datetime.datetime.now + datetime.timedelta(days=2)
-    token = Token(token=encoded_jwt, exp_date=exp_date, user=user_object)
+    exp_date = datetime.datetime.now() + datetime.timedelta(days=2)
+    token = Token(token=encoded_jwt, exp_date=exp_date)
+    db.session.add(token)
+    db.session.commit()
 
     result['result'] = "success"
     result['token'] = encoded_jwt
@@ -38,8 +44,9 @@ def login():
 
 @app.route("/signup", methods=['POST'])
 def signup():
-    username = request.form.get("username")
-    password = request.form.get("password")
+
+    username = request.json['username']
+    password = request.json['password']
 
     result = {}
 
@@ -52,30 +59,41 @@ def signup():
 
     new_user = User(username=username, password=password, display_name=username)
     db.session.add(new_user)
+
+    encoded_jwt = jwt.encode({"username": username, "password": password}, app.config["SECRET_KEY"], algorithm="HS256")
+
+    exp_date = datetime.datetime.now() + datetime.timedelta(days=2)
+    token = Token(token=str(encoded_jwt), exp_date=exp_date, exp=False)
+    db.session.add(token)
     db.session.commit()
+
+    result['result'] = 'success'
+    result['token'] = encoded_jwt
+
+    return result
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    token = request.form.get("token")
+    token = request.json['token']
 
     checkToken = Token.query.filter_by(token=token).first()
     if checkToken is None:
-        return 1
+        return "", 403
     
     checkToken.exp = True
     db.session.commit()
     
-    return 0
+    return "", 200
 
 @app.route("/post", methods=["POST"])
 def post():
-    content = request.form.get("content")
-    reply_to = request.form.get("reply_to")
-    token = request.form.get("token")
+    content = request.json["content"]
+    reply_to = request.json["reply_to"]
+    token = request.json["token"]
 
     result = validateToken(token)
     if result == 1:
-        return 1
+        return "", 403
     
     user = getUserFromToken(token)
 
@@ -84,63 +102,63 @@ def post():
     if reply_to:
         reply_post = Post.query.filter_by(id=reply_to)
         if reply_post is None:
-            return 2
+            return "", 404
         post.master_id = reply_post
 
     db.session.add(post)
     db.session.commit()
 
-    return 0
+    return "", 200
 
 @app.route("/like")
 def like():
-    post = request.form.get("post")
-    token = request.form.get("token")
+    post = request.json["post"]
+    token = request.json["token"]
 
     result = validateToken(token)
     if result == 1:
-        return 1
+        return "", 403
     
     user = getUserFromToken(token)
 
     if not post:
-        return 2
+        return "", 400
     
     post_object = Post.query.get(int(post))
     post_object.likes.append( user )
 
     db.session.commit()
-    return 0
+    return "", 200
 
 @app.route("/addfollow")
 def add_follow():
-    user = request.form.get("user")
-    token = request.form.get("token")
+    user = request.json["user"]
+    token = request.json["token"]
 
     result = validateToken(token)
     if result == 1:
-        return 1
+        return "", 403
     
     following_user = getUserFromToken(token)
 
-    user_object = User.query.filter_by(user=user).first()
+    user_object = User.query.filter_by(username=user).first()
 
-    user_object.friends.append(following_user)
+    user_object.followers.append(following_user)
     db.session.commit()
-    return 0
+    return "", 200
 
-@app.route("/changebio")
+@app.route("/changebio", methods=['POST'])
 def change_bio():
-    bio = request.form.get("bio")
-    token = request.form.get("token")
+    bio = request.json["bio"]
+    token = request.json["token"]
 
     result = validateToken(token)
     if result == 1:
-        return 1
+        return "", 403
     
     following_user = getUserFromToken(token) 
     
     following_user.bio = bio
     db.session.commit()
 
-    return 0
+    return "", 200

@@ -1,4 +1,6 @@
 from app import db
+from sqlalchemy_serializer import SerializerMixin
+from dataclasses import dataclass
 
 relationships_table = db.Table('follow_relationships',
     db.Column('id', db.Integer, primary_key=True),
@@ -12,7 +14,14 @@ likes_table = db.Table('likes',
     db.Column('post_id', db.Integer, db.ForeignKey('posts.id'))
 )
 
-class User(db.Model):
+def list_to_string(list):
+    str_list = []
+    for item in list:
+        str_list.append(str(item))
+
+    return str_list
+
+class User(db.Model, SerializerMixin):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -20,7 +29,7 @@ class User(db.Model):
     display_name = db.Column(db.String)
     password = db.Column(db.String, nullable=False)
     bio = db.Column(db.String)
-    posts = db.relationship("Post", backref="user", lazy="dynamic")
+    posts = db.relationship("Post", backref="user")
     
     following = db.relationship('User', secondary=relationships_table,
                                 primaryjoin='User.id == follow_relationships.c.follower_id',
@@ -28,9 +37,30 @@ class User(db.Model):
                                 backref='followers')
 
     def __repr__(self):
-        return f'<User "{self.username}">'
+        return self.username
 
-class Post(db.Model):
+    def as_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "display_name": self.display_name,
+            "bio": self.bio,
+            "posts": list_to_string(self.posts),
+            "following": list_to_string(self.following),
+            "followers": list_to_string(self.followers),
+            "liked_posts": list_to_string(self.liked_posts)
+        }
+
+
+class Token(db.Model):
+    __tablename__ = "tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String)
+    exp_date = db.Column(db.DateTime)
+    exp = db.Column(db.Boolean, default=False)
+
+class Post(db.Model, SerializerMixin):
     __tablename__ = "posts"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -44,12 +74,19 @@ class Post(db.Model):
                             secondaryjoin='User.id == likes.c.liker_id',
                             backref="liked_posts")
 
-class Token(db.Model):
-    __tablename__ = "tokens"
+    def __repr__(self):
+        return str(self.id)
 
-    id = db.Column(db.Integer, primary_key=True)
-    token = db.Column(db.String, primary_key=True)
-    exp_date = db.Column(db.DateTime)
-    exp = db.Column(db.Boolean, default=False)
-    user = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    def as_dict(self):
+
+        return {
+            "id": self.id,
+            "content": self.content,
+            "master_id": self.master_id,
+            "user_id": self.user_id,
+            "date_created": str(self.date_created),
+            "likes": list_to_string(self.likes),
+            "user": str(self.user)
+        }
+
 
